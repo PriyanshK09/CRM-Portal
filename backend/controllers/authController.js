@@ -72,6 +72,49 @@ export const loginUser = async (req, res) => {
   }
 };
 
+// @desc    Authenticate with Google
+// @route   POST /api/auth/google
+// @access  Public
+export const googleLogin = async (req, res) => {
+  try {
+    const { idToken, name, email, googleId } = req.body;
+
+    // Check if user already exists
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // If user doesn't exist, create a new one
+      user = await User.create({
+        name,
+        email,
+        password: googleId + process.env.JWT_SECRET, // Create a secure password
+        googleId,
+        isGoogleUser: true
+      });
+    } else {
+      // If user exists but wasn't a Google user before
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.isGoogleUser = true;
+        await user.save();
+      }
+    }
+
+    // Return user data
+    res.json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      token: generateToken(user._id),
+      isGoogleUser: user.isGoogleUser
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // @desc    Get user profile
 // @route   GET /api/auth/profile
 // @access  Private

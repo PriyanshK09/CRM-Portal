@@ -52,6 +52,15 @@ export const authService = {
     return response.data;
   },
   
+  googleLogin: async (googleData) => {
+    const response = await api.post('/auth/google', googleData);
+    if (response.data.token) {
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data));
+    }
+    return response.data;
+  },
+  
   register: async (userData) => {
     const response = await api.post('/auth/register', userData);
     return response.data;
@@ -213,4 +222,4 @@ export const dashboardService = {
   }
 };
 
-export default api; 
+export default api;

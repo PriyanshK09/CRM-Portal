@@ -26,6 +26,13 @@ const UserSchema = new mongoose.Schema({
   avatar: {
     type: String
   },
+  googleId: {
+    type: String
+  },
+  isGoogleUser: {
+    type: Boolean,
+    default: false
+  },
   resetPasswordToken: String,
   resetPasswordExpire: Date
 }, {

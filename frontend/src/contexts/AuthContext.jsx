@@ -24,6 +24,17 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function loginWithGoogle(googleData) {
+    try {
+      const userData = await authService.googleLogin(googleData)
+      setCurrentUser(userData)
+      return userData
+    } catch (error) {
+      console.error("Google login error:", error)
+      throw error
+    }
+  }
+
   async function register(userData) {
     try {
       const newUser = await authService.register(userData)
@@ -87,6 +98,7 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     login,
+    loginWithGoogle,
     register,
     logout,
     updateProfile,

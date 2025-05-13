@@ -153,7 +153,7 @@ const CredentialField = styled(Box)(({ theme }) => ({
 }));
 
 export default function Login() {
-  const { currentUser, login } = useAuth()
+  const { currentUser, login, loginWithGoogle } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -163,6 +163,9 @@ export default function Login() {
   const [demoModalOpen, setDemoModalOpen] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const [passwordCopied, setPasswordCopied] = useState(false)
+
+  // Google OAuth client ID
+  const googleClientId = "88933272732-rsm5mc4g1gjv9qm85lkau13q8vr772gc.apps.googleusercontent.com"
 
   // Demo credentials
   const demoCredentials = {
@@ -174,7 +177,96 @@ export default function Login() {
     if (currentUser) {
       navigate("/")
     }
+    
+    // Load Google API script
+    const loadGoogleScript = () => {
+      // Check if the script is already loaded
+      if (document.querySelector(`script[src="https://accounts.google.com/gsi/client"]`)) return
+      
+      const script = document.createElement("script")
+      script.src = "https://accounts.google.com/gsi/client"
+      script.async = true
+      script.defer = true
+      document.body.appendChild(script)
+      
+      return () => {
+        // Clean up
+        document.body.removeChild(script)
+      }
+    }
+    
+    loadGoogleScript()
   }, [currentUser, navigate])
+  
+  // Initialize Google One Tap after the script is loaded
+  useEffect(() => {
+    // Only proceed if Google API is loaded and user isn't already logged in
+    if (!window.google || currentUser) return;
+    
+    const handleGoogleCredentialResponse = async (response) => {
+      try {
+        setLoading(true);
+        setError("");
+        
+        // Decode the JWT token to get user information
+        const payload = parseJwt(response.credential);
+        
+        await loginWithGoogle({
+          idToken: response.credential,
+          name: payload.name,
+          email: payload.email,
+          googleId: payload.sub
+        });
+        
+        navigate("/");
+      } catch (error) {
+        console.error("Google sign-in error:", error);
+        setError(error.response?.data?.message || "Google authentication failed");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    setTimeout(() => {
+      try {
+        // Initialize Google Sign-In with the correct client ID
+        window.google?.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleGoogleCredentialResponse,
+          auto_select: false
+        });
+        
+        // Render the Google Sign-In button
+        const buttonElement = document.getElementById("googleSignInButton");
+        if (buttonElement) {
+          window.google?.accounts.id.renderButton(
+            buttonElement,
+            { 
+              theme: "outline",
+              size: "large",
+              width: "100%",
+              text: "signin_with",
+              shape: "rectangular"
+            }
+          );
+        } else {
+          console.error("Google sign-in button element not found");
+        }
+      } catch (error) {
+        console.error("Error initializing Google Sign-In:", error);
+      }
+    }, 500); // Give a small delay to ensure the Google API is fully loaded
+    
+  }, [currentUser, navigate, loginWithGoogle, googleClientId]);
+
+  // Parse JWT token from Google
+  const parseJwt = (token) => {
+    try {
+      return JSON.parse(atob(token.split('.')[1]))
+    } catch (e) {
+      return null
+    }
+  }
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -226,17 +318,6 @@ export default function Login() {
     setEmail(demoCredentials.email)
     setPassword(demoCredentials.password)
     handleCloseDemoModal()
-  }
-
-  const handleGoogleLogin = async () => {
-    try {
-      setLoading(true)
-      setError("Google login not yet implemented")
-      setLoading(false)
-    } catch (error) {
-      setError("Error signing in with Google")
-      setLoading(false)
-    }
   }
 
   return (
@@ -358,16 +439,62 @@ export default function Login() {
             <span>Or continue with</span>
           </Divider>
           
-          <SocialButton
-            fullWidth
-            variant="outlined"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            startIcon={<GoogleIcon sx={{ color: '#4285F4' }} />}
-            sx={{ mb: 2 }}
-          >
-            Sign in with Google
-          </SocialButton>
+          {/* Google Sign In Button */}
+          <Box sx={{ mb: 2 }}>
+            {/* Visible div for Google's button */}
+            <Box 
+              id="googleSignInButton" 
+              sx={{ 
+                width: '100%', 
+                height: '42px',
+                borderRadius: '8px',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                border: '1px solid #E2E8F0',
+                overflow: 'hidden',
+                boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+                '& > div': {
+                  borderRadius: '8px !important',
+                  width: '100% !important',
+                  boxShadow: 'none !important',
+                },
+                '& iframe': {
+                  width: '100% !important',
+                  scale: '1.02',
+                },
+                '&:hover': {
+                  boxShadow: '0px 2px 4px rgba(62, 99, 221, 0.12)',
+                  border: '1px solid rgba(62, 99, 221, 0.3)',
+                  transition: 'all 0.2s ease'
+                }
+              }} 
+            />
+            
+            {/* Fallback custom button in case Google button doesn't load */}
+            {!window.google && (
+              <SocialButton
+                fullWidth
+                variant="outlined"
+                onClick={() => console.log("Google API not loaded yet")}
+                disabled={loading || !window.google}
+                startIcon={<GoogleIcon sx={{ color: '#4285F4' }} />}
+                sx={{ 
+                  mt: 1, 
+                  display: window.google ? 'none' : 'flex',
+                  backgroundColor: '#ffffff',
+                  boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+                  '&:hover': {
+                    backgroundColor: '#f8fafc',
+                    boxShadow: '0px 2px 4px rgba(62, 99, 221, 0.12)',
+                    border: '1px solid rgba(62, 99, 221, 0.3)'
+                  }
+                }}
+              >
+                Sign in with Google
+              </SocialButton>
+            )}
+          </Box>
           
           <SocialButton
             fullWidth

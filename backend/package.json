@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "data:import": "node seed/seeder.js",
     "data:destroy": "node seed/seeder.js -d",
+    "build": "echo 'Build completed'",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -36,5 +37,8 @@
   "devDependencies": {
     "dotenv-cli": "^8.0.0",
     "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
   }
 }
