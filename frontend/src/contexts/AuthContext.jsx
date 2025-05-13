@@ -48,6 +48,16 @@ export function AuthProvider({ children }) {
   function logout() {
     authService.logout()
     setCurrentUser(null)
+    // Clear any Google auth session
+    if (window.google && window.google.accounts) {
+      try {
+        window.google.accounts.id.disableAutoSelect()
+        // Optionally revoke the Google token
+        // window.google.accounts.id.revoke()
+      } catch (err) {
+        console.error("Error while logging out from Google:", err)
+      }
+    }
     return Promise.resolve()
   }
   

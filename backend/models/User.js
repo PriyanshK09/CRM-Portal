@@ -33,25 +33,40 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  lastLogin: {
+    type: Date,
+    default: Date.now
+  },
   resetPasswordToken: String,
   resetPasswordExpire: Date
 }, {
   timestamps: true
 });
 
-// Encrypt password using bcrypt before saving
+// Encrypt password before saving
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
     next();
   }
 
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
-// Match user entered password to hashed password in database
+// Match password method
 UserSchema.methods.matchPassword = async function(enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  try {
+    return await bcrypt.compare(enteredPassword, this.password);
+  } catch (error) {
+    throw error;
+  }
 };
 
-export default mongoose.model('User', UserSchema);
+const User = mongoose.model('User', UserSchema);
+
+export default User;

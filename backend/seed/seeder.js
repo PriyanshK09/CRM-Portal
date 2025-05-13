@@ -13,7 +13,11 @@ import Order from '../models/Order.js';
 dotenv.config();
 
 // Connect to DB
-mongoose.connect('mongodb+srv://priyansh:pkdk1234@xenocrm.eoedhqx.mongodb.net/?retryWrites=true&w=majority&appName=XenoCRM');
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  useCreateIndex: true
+});
 
 // Sample Data
 const users = [

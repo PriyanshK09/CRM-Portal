@@ -77,7 +77,11 @@ export const loginUser = async (req, res) => {
 // @access  Public
 export const googleLogin = async (req, res) => {
   try {
-    const { idToken, name, email, googleId } = req.body;
+    const { idToken, name, email, googleId, picture } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required from Google authentication' });
+    }
 
     // Check if user already exists
     let user = await User.findOne({ email });
@@ -89,13 +93,22 @@ export const googleLogin = async (req, res) => {
         email,
         password: googleId + process.env.JWT_SECRET, // Create a secure password
         googleId,
-        isGoogleUser: true
+        isGoogleUser: true,
+        avatar: picture // Store Google profile picture URL
       });
     } else {
       // If user exists but wasn't a Google user before
       if (!user.googleId) {
         user.googleId = googleId;
         user.isGoogleUser = true;
+        if (picture && !user.avatar) {
+          user.avatar = picture;
+        }
+        await user.save();
+      } 
+      // Update profile picture if it has changed
+      else if (picture && user.avatar !== picture) {
+        user.avatar = picture;
         await user.save();
       }
     }
@@ -106,6 +119,7 @@ export const googleLogin = async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      avatar: user.avatar,
       token: generateToken(user._id),
       isGoogleUser: user.isGoogleUser
     });

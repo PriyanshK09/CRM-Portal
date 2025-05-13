@@ -163,8 +163,9 @@ export default function Login() {
   const [demoModalOpen, setDemoModalOpen] = useState(false)
   const [emailCopied, setEmailCopied] = useState(false)
   const [passwordCopied, setPasswordCopied] = useState(false)
+  const [googleButtonReady, setGoogleButtonReady] = useState(false)
 
-  // Google OAuth client ID
+  // Google OAuth client ID - Make sure this is correct and matches your Google Cloud Console settings
   const googleClientId = "88933272732-rsm5mc4g1gjv9qm85lkau13q8vr772gc.apps.googleusercontent.com"
 
   // Demo credentials
@@ -176,22 +177,38 @@ export default function Login() {
   useEffect(() => {
     if (currentUser) {
       navigate("/")
+      return
     }
     
     // Load Google API script
     const loadGoogleScript = () => {
       // Check if the script is already loaded
-      if (document.querySelector(`script[src="https://accounts.google.com/gsi/client"]`)) return
+      if (document.querySelector(`script[src="https://accounts.google.com/gsi/client"]`)) {
+        setGoogleButtonReady(true)
+        return
+      }
       
       const script = document.createElement("script")
       script.src = "https://accounts.google.com/gsi/client"
       script.async = true
       script.defer = true
+      script.onload = () => setGoogleButtonReady(true)
       document.body.appendChild(script)
       
       return () => {
-        // Clean up
-        document.body.removeChild(script)
+        // Clean up if component unmounts
+        const scriptElement = document.querySelector(`script[src="https://accounts.google.com/gsi/client"]`)
+        if (scriptElement) {
+          // Don't remove the script as it might be used elsewhere
+          // Just clean up any Google Sign-In related data
+          if (window.google && window.google.accounts) {
+            try {
+              window.google.accounts.id.cancel()
+            } catch (err) {
+              console.error("Error cleaning up Google Sign-In:", err)
+            }
+          }
+        }
       }
     }
     
@@ -201,7 +218,7 @@ export default function Login() {
   // Initialize Google One Tap after the script is loaded
   useEffect(() => {
     // Only proceed if Google API is loaded and user isn't already logged in
-    if (!window.google || currentUser) return;
+    if (!googleButtonReady || !window.google || currentUser) return;
     
     const handleGoogleCredentialResponse = async (response) => {
       try {
@@ -211,62 +228,87 @@ export default function Login() {
         // Decode the JWT token to get user information
         const payload = parseJwt(response.credential);
         
+        if (!payload || !payload.email) {
+          throw new Error("Invalid Google authentication response");
+        }
+        
         await loginWithGoogle({
           idToken: response.credential,
           name: payload.name,
           email: payload.email,
-          googleId: payload.sub
+          googleId: payload.sub,
+          picture: payload.picture // Store profile picture URL if available
         });
         
         navigate("/");
       } catch (error) {
         console.error("Google sign-in error:", error);
-        setError(error.response?.data?.message || "Google authentication failed");
+        setError(error.response?.data?.message || "Google authentication failed. Please try again.");
       } finally {
         setLoading(false);
       }
     };
     
-    setTimeout(() => {
-      try {
-        // Initialize Google Sign-In with the correct client ID
-        window.google?.accounts.id.initialize({
-          client_id: googleClientId,
-          callback: handleGoogleCredentialResponse,
-          auto_select: false
-        });
+    try {
+      // Initialize Google Sign-In with the correct client ID
+      window.google?.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredentialResponse,
+        auto_select: false,
+        cancel_on_tap_outside: true
+      });
+      
+      // Render the Google Sign-In button
+      const buttonElement = document.getElementById("googleSignInButton");
+      if (buttonElement) {
+        window.google?.accounts.id.renderButton(
+          buttonElement,
+          { 
+            theme: "outline",
+            size: "large",
+            width: "100%",
+            text: "signin_with",
+            shape: "rectangular",
+            logo_alignment: "center"
+          }
+        );
         
-        // Render the Google Sign-In button
-        const buttonElement = document.getElementById("googleSignInButton");
-        if (buttonElement) {
-          window.google?.accounts.id.renderButton(
-            buttonElement,
-            { 
-              theme: "outline",
-              size: "large",
-              width: "100%",
-              text: "signin_with",
-              shape: "rectangular"
-            }
-          );
-        } else {
-          console.error("Google sign-in button element not found");
-        }
-      } catch (error) {
-        console.error("Error initializing Google Sign-In:", error);
+        // Also set up One Tap prompt
+        window.google?.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed()) {
+            console.log("One Tap not displayed:", notification.getNotDisplayedReason());
+          } else if (notification.isSkippedMoment()) {
+            console.log("One Tap skipped:", notification.getSkippedReason());
+          } else if (notification.isDismissedMoment()) {
+            console.log("One Tap dismissed:", notification.getDismissedReason());
+          }
+        });
+      } else {
+        console.error("Google sign-in button element not found");
       }
-    }, 500); // Give a small delay to ensure the Google API is fully loaded
-    
-  }, [currentUser, navigate, loginWithGoogle, googleClientId]);
+    } catch (error) {
+      console.error("Error initializing Google Sign-In:", error);
+    }
+  }, [currentUser, navigate, loginWithGoogle, googleClientId, googleButtonReady]);
 
   // Parse JWT token from Google
   const parseJwt = (token) => {
     try {
       return JSON.parse(atob(token.split('.')[1]))
     } catch (e) {
+      console.error("Error parsing JWT token:", e)
       return null
     }
   }
+
+  // Custom Google Sign In button as fallback
+  const handleManualGoogleSignIn = () => {
+    if (window.google && window.google.accounts) {
+      window.google.accounts.id.prompt();
+    } else {
+      setError("Google Sign-In is not available. Please try again later.");
+    }
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -443,52 +485,52 @@ export default function Login() {
           <Box sx={{ mb: 2 }}>
             {/* Visible div for Google's button */}
             <Box 
-              id="googleSignInButton" 
-              sx={{ 
-                width: '100%', 
-                height: '42px',
+              id="googleSignInButton"
+              sx={{
+                width: '100%',
+                height: '46px',
                 borderRadius: '8px',
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
                 border: '1px solid #E2E8F0',
                 overflow: 'hidden',
-                boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
-                '& > div': {
-                  borderRadius: '8px !important',
-                  width: '100% !important',
-                  boxShadow: 'none !important',
-                },
-                '& iframe': {
-                  width: '100% !important',
-                  scale: '1.02',
-                },
+                boxShadow: '0px 2px 8px rgba(62, 99, 221, 0.10)',
+                background: '#F8FAFC',
+                transition: 'box-shadow 0.2s, border-color 0.2s',
+                fontWeight: 600,
+                fontSize: '1rem',
+                color: '#2563eb',
                 '&:hover': {
-                  boxShadow: '0px 2px 4px rgba(62, 99, 221, 0.12)',
-                  border: '1px solid rgba(62, 99, 221, 0.3)',
-                  transition: 'all 0.2s ease'
-                }
-              }} 
+                  boxShadow: '0px 4px 16px rgba(62, 99, 221, 0.15)',
+                  borderColor: '#3E63DD',
+                },
+              }}
             />
-            
             {/* Fallback custom button in case Google button doesn't load */}
-            {!window.google && (
+            {!googleButtonReady && (
               <SocialButton
                 fullWidth
                 variant="outlined"
-                onClick={() => console.log("Google API not loaded yet")}
-                disabled={loading || !window.google}
+                onClick={handleManualGoogleSignIn}
+                disabled={loading}
                 startIcon={<GoogleIcon sx={{ color: '#4285F4' }} />}
                 sx={{ 
                   mt: 1, 
-                  display: window.google ? 'none' : 'flex',
-                  backgroundColor: '#ffffff',
-                  boxShadow: '0px 1px 3px rgba(0, 0, 0, 0.08)',
+                  backgroundColor: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '8px',
+                  boxShadow: '0px 2px 8px rgba(62, 99, 221, 0.10)',
+                  fontWeight: 600,
+                  fontSize: '1rem',
+                  color: '#2563eb',
+                  textTransform: 'none',
+                  transition: 'box-shadow 0.2s, border-color 0.2s',
                   '&:hover': {
-                    backgroundColor: '#f8fafc',
-                    boxShadow: '0px 2px 4px rgba(62, 99, 221, 0.12)',
-                    border: '1px solid rgba(62, 99, 221, 0.3)'
-                  }
+                    backgroundColor: '#f1f5f9',
+                    boxShadow: '0px 4px 16px rgba(62, 99, 221, 0.15)',
+                    borderColor: '#3E63DD',
+                  },
                 }}
               >
                 Sign in with Google
