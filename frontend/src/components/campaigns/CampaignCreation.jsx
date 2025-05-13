@@ -1,6 +1,6 @@
 "use client"
 
-import { useLocation } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import {
   Box,
   Typography,
@@ -46,14 +46,15 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
-import SegmentIcon from '@mui/icons-material/Segment';
 import TemplateIcon from '@mui/icons-material/ViewQuilt';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import PercentIcon from '@mui/icons-material/Percent';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import React, { useState, useEffect } from 'react';
+import { segmentService, campaignService } from "../../services/api";
 
 // Define theme colors
 const themeColors = {
@@ -265,6 +266,7 @@ const templatePreviews = {
 
 export default function CampaignCreation() {
   const location = useLocation()
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [activeStep, setActiveStep] = useState(0);
@@ -273,30 +275,97 @@ export default function CampaignCreation() {
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
+  const [segments, setSegments] = useState([]);
+  const [segmentsLoading, setSegmentsLoading] = useState(false);
+  const [segmentsError, setSegmentsError] = useState(null);
+  
+  // Get segment data if coming from segment builder
+  const segmentData = location.state || {};
+  
   const [campaignData, setCampaignData] = useState({
     name: '',
     description: '',
-    type: '',
-    segment: '',
-    template: '',
-    startDate: null,
-    endDate: null,
+    type: 'email',
+    segment: segmentData.segmentId || '',
+    segmentName: segmentData.segmentName || '',
+    segmentDescription: segmentData.segmentDescription || '',
+    audienceSize: segmentData.audienceSize || 0,
+    template: 'promotional',
+    scheduledDate: null,
+    status: 'draft',
+    subject: '',
+    preheader: '',
+    content: '',
+    fromName: '',
+    fromEmail: '',
+    replyTo: '',
+    // Additional fields
+    discount: '',
     budget: '',
-    goal: ''
+    expectedROI: '',
   });
   const [errors, setErrors] = useState({});
   
   useEffect(() => {
-    // If coming from segment builder, use the passed data
-    if (location.state?.segmentName) {
-      setCampaignData((prevData) => ({
+    // If we have segment data from location state, use it to pre-fill campaign data
+    if (location.state && location.state.segmentId) {
+      setCampaignData(prevData => ({
         ...prevData,
-        name: `${location.state.segmentName} Campaign`,
-        segment: location.state.segmentId || '' // Add segment ID if available
+        name: location.state.segmentName ? `${location.state.segmentName} Campaign` : prevData.name,
+        segment: location.state.segmentId,
+        segmentName: location.state.segmentName || '',
+        segmentDescription: location.state.segmentDescription || '',
+        audienceSize: location.state.audienceSize || 0
       }));
       displaySnackbar(`Segment "${location.state.segmentName}" successfully loaded`, 'success');
     }
-  }, [location])
+  }, [location.state]);
+
+  // Fetch segments on component mount or when activeStep changes to the Audience Selection step
+  useEffect(() => {
+    if (activeStep === 1) {
+      fetchSegments();
+    }
+  }, [activeStep]);
+
+  const fetchSegments = async () => {
+    try {
+      setSegmentsLoading(true);
+      setSegmentsError(null);
+      const data = await segmentService.getSegments();
+      setSegments(data.segments || []);
+    } catch (err) {
+      console.error("Error fetching segments:", err);
+      setSegmentsError("Failed to load segments. Please try again.");
+      
+      // Fallback to mock data for demo purposes
+      setSegments([
+        { 
+          _id: "seg1", 
+          name: "High-Value Customers", 
+          description: "Customers who have spent more than ₹1000",
+          audienceSize: 320,
+          isActive: true 
+        },
+        { 
+          _id: "seg2", 
+          name: "Recent Purchasers", 
+          description: "Customers who made a purchase in the last 30 days",
+          audienceSize: 580,
+          isActive: true 
+        },
+        { 
+          _id: "seg3", 
+          name: "Newsletter Subscribers", 
+          description: "Customers who subscribed to the newsletter",
+          audienceSize: 1240,
+          isActive: true 
+        },
+      ]);
+    } finally {
+      setSegmentsLoading(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -376,15 +445,30 @@ export default function CampaignCreation() {
     if (validateStep()) {
       setIsSubmitting(true);
       try {
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        console.log('Campaign created:', campaignData);
+        // Prepare campaign data with required fields
+        const campaignDataToSend = {
+          ...campaignData,
+          startDate: campaignData.startDate || new Date(),
+          endDate: campaignData.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Default to 30 days from now
+          status: 'Draft',
+          content: {
+            subject: campaignData.subject || campaignData.name,
+            body: campaignData.content || '',
+            callToAction: 'Learn More'
+          }
+        };
+
+        // Call the API to create the campaign
+        const response = await campaignService.createCampaign(campaignDataToSend);
+        
+        console.log('Campaign created:', response);
         displaySnackbar('Campaign created successfully!', 'success');
-        // In a real application, we would navigate to campaigns dashboard
-        // Example: navigate('/campaigns');
+        
+        // Navigate to campaigns list
+        navigate('/campaigns/list');
       } catch (error) {
         console.error('Error creating campaign:', error);
-        displaySnackbar('Error creating campaign. Please try again.', 'error');
+        displaySnackbar(`Error creating campaign: ${error.response?.data?.message || 'Please try again'}`, 'error');
       } finally {
         setIsSubmitting(false);
       }
@@ -437,6 +521,17 @@ export default function CampaignCreation() {
         template: ''
       });
     }
+  };
+
+  const handleSegmentSelect = (segment) => {
+    setCampaignData({
+      ...campaignData,
+      segment: segment._id,
+      segmentName: segment.name,
+      segmentDescription: segment.description || '',
+      audienceSize: segment.audienceSize || 0
+    });
+    displaySnackbar(`Segment "${segment.name}" selected`, 'success');
   };
 
   const getStepContent = (step) => {
@@ -554,135 +649,164 @@ export default function CampaignCreation() {
           <Box sx={{ mt: 3 }}>
             <FormSection>
               <FormSectionTitle variant="h6">
-                <SegmentIcon /> Target Audience
+                <PeopleAltIcon fontSize="small" sx={{ color: themeColors.primary }} />
+                Audience Selection
               </FormSectionTitle>
               
-              <Grid container spacing={3}>
-                <Grid item xs={12}>
-                  <StyledFormControl fullWidth error={!!errors.segment}>
-                    <InputLabel id="segment-label">Customer Segment</InputLabel>
-                    <Select
-                      labelId="segment-label"
-                      id="segment"
-                      name="segment"
-                      value={campaignData.segment}
-                      label="Customer Segment"
-                      onChange={handleChange}
-                    >
-                      <MenuItem value="new-customers">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: '#e3f2fd', color: '#1976d2', width: 32, height: 32 }}>N</Avatar>
-                          <Box>
-                            <Typography>New Customers (Last 30 Days)</Typography>
-                            <Typography variant="caption" color="text.secondary">1,250 contacts</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                      <MenuItem value="high-value">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', width: 32, height: 32 }}>H</Avatar>
-                          <Box>
-                            <Typography>High Value Customers</Typography>
-                            <Typography variant="caption" color="text.secondary">720 contacts</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                      <MenuItem value="inactive">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: '#ffebee', color: '#c62828', width: 32, height: 32 }}>I</Avatar>
-                          <Box>
-                            <Typography>Inactive Customers</Typography>
-                            <Typography variant="caption" color="text.secondary">3,100 contacts</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                      <MenuItem value="frequent">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: '#fff8e1', color: '#f57f17', width: 32, height: 32 }}>F</Avatar>
-                          <Box>
-                            <Typography>Frequent Buyers</Typography>
-                            <Typography variant="caption" color="text.secondary">950 contacts</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                      <MenuItem value="all">
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar sx={{ bgcolor: '#f3e5f5', color: '#7b1fa2', width: 32, height: 32 }}>A</Avatar>
-                          <Box>
-                            <Typography>All Customers</Typography>
-                            <Typography variant="caption" color="text.secondary">15,400 contacts</Typography>
-                          </Box>
-                        </Box>
-                      </MenuItem>
-                    </Select>
-                    {errors.segment && <FormHelperText>{errors.segment}</FormHelperText>}
-                    {!errors.segment && (
-                      <FormHelperText>
-                        Choose a segment or <Button size="small" sx={{ p: 0, minWidth: 'auto', textTransform: 'none' }}>create a new one</Button>
-                      </FormHelperText>
-                    )}
-                  </StyledFormControl>
-                </Grid>
-                
-                {campaignData.segment && (
+              {/* Segment selection section */}
+              {campaignData.segment ? (
+                // Selected segment display
+                <Grid container spacing={3}>
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" color="text.primary" sx={{ mb: 2 }}>
-                      Segment Analytics
-                    </Typography>
-                    <StyledCard variant="outlined">
+                    <StyledCard>
                       <CardContent>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                          <Paper sx={{ p: 2, flex: '1 1 auto', minWidth: isMobile ? '100%' : '200px' }}>
-                            <Typography variant="overline" display="block" color="text.secondary">
-                              Total customers
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                          <Box>
+                            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                              Selected Segment: {campaignData.segmentName}
                             </Typography>
-                            <Typography variant="h4" fontWeight="bold">
-                              {campaignData.segment === 'new-customers' ? '1,250' :
-                               campaignData.segment === 'high-value' ? '720' :
-                               campaignData.segment === 'inactive' ? '3,100' :
-                               campaignData.segment === 'frequent' ? '950' :
-                               campaignData.segment === 'all' ? '15,400' : '0'}
-                            </Typography>
-                          </Paper>
-                          
-                          <Paper sx={{ p: 2, flex: '1 1 auto', minWidth: isMobile ? '100%' : '200px' }}>
-                            <Typography variant="overline" display="block" color="text.secondary">
-                              Avg. purchase value
-                            </Typography>
-                            <Typography variant="h4" fontWeight="bold">
-                              ${campaignData.segment === 'new-customers' ? '35.50' :
-                               campaignData.segment === 'high-value' ? '125.75' :
-                               campaignData.segment === 'inactive' ? '22.30' :
-                               campaignData.segment === 'frequent' ? '58.40' :
-                               campaignData.segment === 'all' ? '48.60' : '0'}
-                            </Typography>
-                          </Paper>
-                          
-                          <Paper sx={{ p: 2, flex: '1 1 auto', minWidth: isMobile ? '100%' : '200px' }}>
-                            <Typography variant="overline" display="block" color="text.secondary">
-                              Expected engagement
-                            </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <Typography variant="h4" fontWeight="bold" sx={{ mr: 1 }}>
-                                {campaignData.segment === 'new-customers' ? '35%' :
-                                 campaignData.segment === 'high-value' ? '68%' :
-                                 campaignData.segment === 'inactive' ? '12%' :
-                                 campaignData.segment === 'frequent' ? '74%' :
-                                 campaignData.segment === 'all' ? '28%' : '0%'}
+                            
+                            {campaignData.segmentDescription && (
+                              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                                {campaignData.segmentDescription}
                               </Typography>
+                            )}
+                            
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Chip 
-                                size="small" 
-                                label={campaignData.segment === 'high-value' || campaignData.segment === 'frequent' ? 'High' : 'Average'}
-                                color={campaignData.segment === 'high-value' || campaignData.segment === 'frequent' ? 'success' : 'primary'}
+                                icon={<PeopleAltIcon fontSize="small" />} 
+                                label={`${campaignData.audienceSize.toLocaleString()} recipients`}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
                               />
                             </Box>
-                          </Paper>
+                          </Box>
+                          <Button 
+                            variant="outlined" 
+                            size="small"
+                            color="primary"
+                            onClick={() => {
+                              setCampaignData({
+                                ...campaignData,
+                                segment: '',
+                                segmentName: '',
+                                segmentDescription: '',
+                                audienceSize: 0
+                              })
+                            }}
+                          >
+                            Change
+                          </Button>
                         </Box>
                       </CardContent>
                     </StyledCard>
                   </Grid>
-                )}
-              </Grid>
+                </Grid>
+              ) : (
+                // Segment listing and selection
+                <Box>
+                  {segmentsLoading ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : segmentsError ? (
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                      <Typography color="error" paragraph>{segmentsError}</Typography>
+                      <Button 
+                        variant="outlined" 
+                        onClick={fetchSegments}
+                      >
+                        Retry
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Grid container spacing={2}>
+                      {segments.map((segment) => (
+                        <Grid item xs={12} md={6} key={segment._id}>
+                          <Card
+                            sx={{
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s, box-shadow 0.2s',
+                              '&:hover': {
+                                transform: 'translateY(-4px)',
+                                boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
+                              },
+                              border: `1px solid ${themeColors.border}`,
+                              borderRadius: '12px',
+                            }}
+                            onClick={() => handleSegmentSelect(segment)}
+                          >
+                            <CardContent>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                  {segment.name}
+                                </Typography>
+                                {segment.isActive && (
+                                  <Chip 
+                                    label="Active" 
+                                    size="small" 
+                                    color="success" 
+                                    variant="outlined" 
+                                  />
+                                )}
+                              </Box>
+                              
+                              {segment.description && (
+                                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                                  {segment.description}
+                                </Typography>
+                              )}
+                              
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  <PeopleAltIcon fontSize="small" color="action" sx={{ mr: 0.5 }} />
+                                  <Typography variant="body2" color="textSecondary">
+                                    {segment.audienceSize.toLocaleString()} recipients
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))}
+                      
+                      {/* Create new segment card */}
+                      <Grid item xs={12} md={6}>
+                        <Card
+                          sx={{
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s, box-shadow 0.2s',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
+                            },
+                            border: `2px dashed ${themeColors.border}`,
+                            borderRadius: '12px',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                          onClick={() => navigate('/segments')}
+                        >
+                          <CardContent sx={{ textAlign: 'center' }}>
+                            <Box sx={{ mb: 2 }}>
+                              <AddCircleOutlineIcon color="primary" sx={{ fontSize: 40 }} />
+                            </Box>
+                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                              Create New Segment
+                            </Typography>
+                            <Typography variant="body2" color="textSecondary">
+                              Build a custom segment for your campaign
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+                  )}
+                </Box>
+              )}
             </FormSection>
           </Box>
         );
@@ -936,12 +1060,7 @@ export default function CampaignCreation() {
                 <Grid item xs={12} sm={6} md={3}>
                   <Typography variant="body2" color="text.secondary">Audience</Typography>
                   <Typography variant="body1" fontWeight="medium">
-                    {campaignData.segment === 'new-customers' ? 'New Customers (1,250)' :
-                     campaignData.segment === 'high-value' ? 'High Value Customers (720)' :
-                     campaignData.segment === 'inactive' ? 'Inactive Customers (3,100)' :
-                     campaignData.segment === 'frequent' ? 'Frequent Buyers (950)' :
-                     campaignData.segment === 'all' ? 'All Customers (15,400)' :
-                     'Not set'}
+                    {campaignData.segment ? `${campaignData.segmentName} (${campaignData.audienceSize.toLocaleString()})` : 'Not set'}
                   </Typography>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>

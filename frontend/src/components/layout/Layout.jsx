@@ -42,7 +42,7 @@ const drawerWidth = 250
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [anchorEl, setAnchorEl] = useState(null)
-  const { currentUser, signOut } = useAuth()
+  const { currentUser, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -60,7 +60,7 @@ export default function Layout() {
 
   const handleSignOut = async () => {
     try {
-      await signOut()
+      await logout()
       navigate("/login")
     } catch (error) {
       console.error("Error signing out", error)
@@ -121,6 +121,15 @@ export default function Layout() {
     return location.pathname === path;
   }
 
+  const handleNavigation = (path, e) => {
+    if (location.pathname === '/segments' && !path.startsWith('/segments')) {
+      e.stopPropagation();
+      window.location.href = path;
+    } else {
+      navigate(path);
+    }
+  };
+
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', height: 64 }}>
@@ -132,7 +141,7 @@ export default function Layout() {
           gap: 1
         }}>
           <CampaignIcon sx={{ fontSize: 24 }} />
-          Mini CRM
+          Xeno CRM
         </Typography>
       </Box>
       <Divider />
@@ -149,7 +158,7 @@ export default function Layout() {
             justifyContent: 'flex-start',
             fontWeight: 600
           }}
-          onClick={() => navigate('/campaigns/new')}
+          onClick={(e) => handleNavigation('/campaigns/new', e)}
         >
           <CampaignIcon fontSize="small" sx={{ mr: 1 }} />
           New Campaign
@@ -173,7 +182,7 @@ export default function Layout() {
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding sx={{ mb: 1 }}>
             <ListItemButton 
-              onClick={() => navigate(item.path)}
+              onClick={(e) => handleNavigation(item.path, e)}
               sx={{
                 borderRadius: 1.5,
                 py: 1.2,

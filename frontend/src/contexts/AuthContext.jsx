@@ -1,39 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect } from "react"
-import { initializeApp } from "firebase/app"
-import {
-  getAuth,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-} from "firebase/auth"
-
-
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-}
-
-
-const app = initializeApp(firebaseConfig)
-const auth = getAuth(app)
-const googleProvider = new GoogleAuthProvider()
-
-
-const DEMO_USER = {
-  uid: "demo-user-id",
-  email: "demo@minicrm.com",
-  displayName: "Demo User",
-  photoURL: null,
-  emailVerified: true,
-  isDemo: true
-}
+import { authService } from "../services/api"
 
 const AuthContext = createContext()
 
@@ -45,24 +13,62 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  function signInWithGoogle() {
-    return signInWithPopup(auth, googleProvider)
-  }
-
-  function signOut() {
-    if (currentUser?.isDemo) {
-      setCurrentUser(null)
-      return Promise.resolve()
-    }
-    return firebaseSignOut(auth)
-  }
-
-  
-  async function signInAsDemo() {
+  async function login(email, password) {
     try {
-      
-      setCurrentUser(DEMO_USER)
-      return Promise.resolve({ user: DEMO_USER })
+      const userData = await authService.login(email, password)
+      setCurrentUser(userData)
+      return userData
+    } catch (error) {
+      console.error("Login error:", error)
+      throw error
+    }
+  }
+
+  async function register(userData) {
+    try {
+      const newUser = await authService.register(userData)
+      return newUser
+    } catch (error) {
+      console.error("Registration error:", error)
+      throw error
+    }
+  }
+
+  function logout() {
+    authService.logout()
+    setCurrentUser(null)
+    return Promise.resolve()
+  }
+  
+  async function updateProfile(userData) {
+    try {
+      const updatedUser = await authService.updateProfile(userData)
+      setCurrentUser({
+        ...currentUser,
+        ...updatedUser
+      })
+      return updatedUser
+    } catch (error) {
+      console.error("Update profile error:", error)
+      throw error
+    }
+  }
+
+  // Handle demo user for testing purposes
+  async function loginAsDemo() {
+    try {
+      const demoUser = {
+        _id: "demo-user-id",
+        name: "Demo User",
+        email: "demo@crm-portal.com",
+        role: "admin",
+        token: "demo-token",
+        isDemo: true
+      }
+      localStorage.setItem('token', demoUser.token)
+      localStorage.setItem('user', JSON.stringify(demoUser))
+      setCurrentUser(demoUser)
+      return demoUser
     } catch (error) {
       console.error("Error signing in as demo user", error)
       throw error
@@ -70,22 +76,21 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      
-      if (!currentUser?.isDemo) {
-        setCurrentUser(user)
-      }
-      setLoading(false)
-    })
-
-    return unsubscribe
-  }, [currentUser?.isDemo])
+    // Check if user is already logged in
+    const storedUser = localStorage.getItem('user')
+    if (storedUser) {
+      setCurrentUser(JSON.parse(storedUser))
+    }
+    setLoading(false)
+  }, [])
 
   const value = {
     currentUser,
-    signInWithGoogle,
-    signOut,
-    signInAsDemo,
+    login,
+    register,
+    logout,
+    updateProfile,
+    loginAsDemo,
   }
 
   return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>
